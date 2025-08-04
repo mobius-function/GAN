@@ -3,10 +3,10 @@ import torch.nn as nn
 
 
 class Generator(nn.Module):
-    def __init__(self, latent_dim, channels, img_size=64, img_channels=3):
+    def __init__(self, latent_dim, channels, output_size=64, output_channels=3):
         super(Generator, self).__init__()
         
-        self.init_size = img_size // 16
+        self.init_size = output_size // 16
         self.l1 = nn.Sequential(
             nn.Linear(latent_dim, channels[0] * self.init_size ** 2)
         )
@@ -26,7 +26,7 @@ class Generator(nn.Module):
             nn.BatchNorm2d(channels[3], 0.8),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Upsample(scale_factor=2),
-            nn.Conv2d(channels[3], img_channels, 3, stride=1, padding=1),
+            nn.Conv2d(channels[3], output_channels, 3, stride=1, padding=1),
             nn.Tanh()
         )
         
@@ -38,7 +38,7 @@ class Generator(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, channels, img_size=64, img_channels=3):
+    def __init__(self, channels, input_size=64, input_channels=3):
         super(Discriminator, self).__init__()
         
         def discriminator_block(in_filters, out_filters, bn=True):
@@ -50,13 +50,13 @@ class Discriminator(nn.Module):
             return block
         
         self.model = nn.Sequential(
-            *discriminator_block(img_channels, channels[0], bn=False),
+            *discriminator_block(input_channels, channels[0], bn=False),
             *discriminator_block(channels[0], channels[1]),
             *discriminator_block(channels[1], channels[2]),
             *discriminator_block(channels[2], channels[3]),
         )
         
-        ds_size = img_size // 2**4
+        ds_size = input_size // 2**4
         self.adv_layer = nn.Sequential(
             nn.Linear(channels[3] * ds_size ** 2, 1),
             nn.Sigmoid()

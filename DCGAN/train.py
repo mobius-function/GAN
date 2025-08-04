@@ -32,12 +32,12 @@ def train_gan(config):
     generator = Generator(
         latent_dim=config['model']['latent_dim'],
         channels=config['model']['generator']['channels'],
-        img_size=config['dataset']['image_size']
+        output_size=config['dataset']['image_size']
     ).to(device)
     
     discriminator = Discriminator(
         channels=config['model']['discriminator']['channels'],
-        img_size=config['dataset']['image_size']
+        input_size=config['dataset']['image_size']
     ).to(device)
     
     g_optimizer = optim.Adam(
