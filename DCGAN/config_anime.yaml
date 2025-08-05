@@ -1,0 +1,45 @@
+# GAN Configuration File for Anime Faces
+
+# Dataset settings
+dataset:
+  name: "anime"
+  data_dir: "./data/anime"
+  image_size: 64
+  batch_size: 128  # Total batch size across all GPUs
+  num_workers: 4
+
+# Model settings
+model:
+  latent_dim: 100
+  generator:
+    channels: [512, 256, 128, 64]
+    kernel_size: 4
+    stride: 2
+    padding: 1
+  discriminator:
+    channels: [64, 128, 256, 512]
+    kernel_size: 4
+    stride: 2
+    padding: 1
+
+# Training settings
+training:
+  num_epochs: 200
+  learning_rate:
+    generator: 0.0002
+    discriminator: 0.0002
+  beta1: 0.5
+  beta2: 0.999
+  save_interval: 10
+  log_interval: 50
+  sample_interval: 200
+
+# Output settings
+output:
+  checkpoint_dir: "./checkpoints_anime"
+  sample_dir: "./samples_anime"
+  log_dir: "./logs_anime"
+
+# Hardware settings
+device: "cuda"
+seed: 42

@@ -5,8 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
-from torch.utils.tensorboard import SummaryWriter
-import torchvision.utils as vutils
+import wandb
 
 from models import Generator, Discriminator
 from dataset import get_celeba_dataloader
@@ -23,8 +22,12 @@ def load_config(config_path):
 def train_gan(config):
     """Main training function"""
     
-    # Initialize TensorBoard writer
-    writer = SummaryWriter(log_dir=os.path.join(config['output']['log_dir'], 'tensorboard'))
+    # Initialize wandb
+    wandb.init(
+        project="dcgan-celeba",
+        config=config,
+        name=f"dcgan-{config['dataset']['image_size']}px"
+    )
     
     set_seed(config['seed'])
     
@@ -45,7 +48,6 @@ def train_gan(config):
         input_size=config['dataset']['image_size']
     ).to(device)
     
-    
     g_optimizer = optim.Adam(
         generator.parameters(),
         lr=config['training']['learning_rate']['generator'],
@@ -60,8 +62,7 @@ def train_gan(config):
     
     criterion = nn.BCELoss()
     
-    # Fixed noise for consistent validation image generation (8 images)
-    fixed_noise = torch.randn(8, config['model']['latent_dim']).to(device)
+    fixed_noise = torch.randn(64, config['model']['latent_dim'])
     
     os.makedirs(config['output']['checkpoint_dir'], exist_ok=True)
     os.makedirs(config['output']['sample_dir'], exist_ok=True)
@@ -120,11 +121,6 @@ def train_gan(config):
                     'D Loss': f"{d_loss.item():.4f}",
                     'G Loss': f"{g_loss.item():.4f}"
                 })
-                
-                # Log step-level metrics to TensorBoard
-                global_step = epoch * len(dataloader) + i
-                writer.add_scalar('Loss/Discriminator', d_loss.item(), global_step)
-                writer.add_scalar('Loss/Generator', g_loss.item(), global_step)
             
             if (epoch * len(dataloader) + i) % config['training']['sample_interval'] == 0:
                 save_samples(generator, fixed_noise, epoch, config['output']['sample_dir'], device)
@@ -133,21 +129,6 @@ def train_gan(config):
         avg_d_loss = epoch_d_loss / len(dataloader)
         print(f"Epoch [{epoch+1}/{config['training']['num_epochs']}] "
               f"D Loss: {avg_d_loss:.4f}, G Loss: {avg_g_loss:.4f}")
-        
-        # Generate validation images with fixed noise
-        generator.eval()
-        with torch.no_grad():
-            validation_images = generator(fixed_noise)
-            validation_images = validation_images.detach().cpu()
-        generator.train()
-        
-        # Log epoch-level metrics to TensorBoard
-        writer.add_scalar('Epoch_Loss/Discriminator', avg_d_loss, epoch + 1)
-        writer.add_scalar('Epoch_Loss/Generator', avg_g_loss, epoch + 1)
-        
-        # Log validation images to TensorBoard (8 fixed images in a grid)
-        img_grid = vutils.make_grid(validation_images, nrow=4, normalize=True)
-        writer.add_image('Validation_Images', img_grid, epoch + 1)
         
         if (epoch + 1) % config['training']['save_interval'] == 0:
             save_checkpoint(
@@ -168,13 +149,10 @@ def train_gan(config):
         g_losses, d_losses,
         os.path.join(config['output']['log_dir'], 'final_losses.png')
     )
-    
-    # Close TensorBoard writer
-    writer.close()
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Train GAN on CelebA dataset')
+W   parser = argparse.ArgumentParser(description='Train GAN on CelebA dataset')
     parser.add_argument('--config', type=str, default='config.yaml',
                         help='Path to configuration file (default: config.yaml)')
     args = parser.parse_args()
@@ -184,4 +162,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main()c
