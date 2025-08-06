@@ -1,0 +1,48 @@
+# GAN Configuration File for Celebrity Faces
+
+# Dataset settings
+dataset:
+  name: "celebrity"
+  data_dir: "./data/celebrity"
+  image_size: 64
+  batch_size: 24  # Total batch size across all GPUs
+  num_workers: 8
+  max_images: 800  # Total images (64000 train + 16000 validation with 0.8 split)
+  train_ratio: 0.8  # 80% for training, 20% for validation
+
+# Model settings
+model:
+  latent_dim: 100
+  generator:
+    channels: [512, 256, 128, 64]
+    kernel_size: 4
+    stride: 2
+    padding: 1
+  discriminator:
+    channels: [64, 128, 256, 512]
+    kernel_size: 4
+    stride: 2
+    padding: 1
+
+# Training settings
+training:
+  num_epochs: 1
+  learning_rate:
+    generator: 0.0002
+    discriminator: 0.0002
+  beta1: 0.5
+  beta2: 0.999
+  save_interval: 10
+  log_interval: 50
+  sample_interval: 200
+
+# Output settings
+output:
+  checkpoint_dir: "./checkpoints_celebrity"
+  sample_dir: "./samples_celebrity"
+  log_dir: "./logs_celebrity"
+  tensorboard_port: 6006
+
+# Hardware settings
+device: "cuda"
+seed: 42
