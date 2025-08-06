@@ -5,10 +5,13 @@ dataset:
   name: "celebrity"
   data_dir: "./data/celebrity"
   image_size: 64
-  batch_size: 24  # Total batch size across all GPUs
+  batch_size: 64  # Total batch size across all GPUs
   num_workers: 8
   max_images: 800  # Total images (64000 train + 16000 validation with 0.8 split)
-  train_ratio: 0.8  # 80% for training, 20% for validation
+  deterministic: true  # Use fixed order for data loading (no shuffling)
+  dataset_seed: 42  # Seed for dataset splitting (ensures same train/val split)
+  cache_dir: "./cache"  # Directory for caching downloaded images
+  validate_cache: false  # Validate cached images on load (set to false for faster loading)
 
 # Model settings
 model:
@@ -26,7 +29,7 @@ model:
 
 # Training settings
 training:
-  num_epochs: 1
+  num_epochs: 5
   learning_rate:
     generator: 0.0002
     discriminator: 0.0002
@@ -35,14 +38,22 @@ training:
   save_interval: 10
   log_interval: 50
   sample_interval: 200
+  eval_interval: 1  # Evaluate IS/FID scores every N epochs
 
 # Output settings
 output:
   checkpoint_dir: "./checkpoints_celebrity"
   sample_dir: "./samples_celebrity"
   log_dir: "./logs_celebrity"
-  tensorboard_port: 6006
 
 # Hardware settings
 device: "cuda"
 seed: 42
+
+# Wandb settings
+wandb:
+  enabled: true  # Enable wandb logging
+  project: "dcgan"
+  run_name: data_800_epoch_1_learn_fixed_2  # Will be auto-generated if null
+  mode: "online"  # "online" or "offline"
+  api_key: "d9c2ac65c1c8bd5f5e7166faec45d4eb699a36ab"

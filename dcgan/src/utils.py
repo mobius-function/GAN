@@ -1,4 +1,5 @@
 import os
+import yaml
 import torch
 import torchvision.utils as vutils
 import matplotlib.pyplot as plt
@@ -78,3 +79,12 @@ def set_seed(seed):
     np.random.seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+def load_config(config_path):
+    """
+    Load configuration from YAML file
+    """
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    return config
