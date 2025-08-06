@@ -30,15 +30,36 @@ This is a basic GAN (Generative Adversarial Network) implementation for generati
 
 ## Usage
 
-### Training with default configuration:
+### Single GPU Training
+
+Training with default configuration:
 ```bash
 python train.py
 ```
 
-### Training with custom configuration:
+Training with custom configuration:
 ```bash
 python train.py --config my_config.yaml
 ```
+
+### Multi-GPU Training (Distributed Data Parallel)
+
+For faster training across multiple GPUs, use the distributed training script:
+
+```bash
+python train_ddp.py
+```
+
+With custom configuration:
+```bash
+python train_ddp.py --config my_config.yaml
+```
+
+The DDP script automatically:
+- Detects and uses all available GPUs
+- Distributes the batch size across GPUs
+- Synchronizes gradients and metrics
+- Handles logging on the main process only
 
 ## Configuration
 

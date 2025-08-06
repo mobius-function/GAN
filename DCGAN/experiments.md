@@ -1,7 +1,7 @@
 # DCGAN Experiments Log
 
 ## Overview
-This document tracks experimental results for DCGAN training on anime faces dataset.
+This document tracks experimental results for DCGAN training on celebrity faces dataset.
 
 ---
 
@@ -9,7 +9,7 @@ This document tracks experimental results for DCGAN training on anime faces data
 
 | Exp # | Date | Config | Batch Size | LR (G/D) | Latent Dim | Epochs | Final G Loss | Final D Loss | FID Score | Training Time | Hardware | Sample Results | Notes |
 |-------|------|--------|------------|----------|------------|---------|--------------|--------------|-----------|---------------|----------|----------------|-------|
-| 1 | - | baseline | 128 | 0.0002/0.0002 | 100 | 200 | - | - | - | - | - | [epoch_50](samples_anime/epoch_050.png), [epoch_100](samples_anime/epoch_100.png), [epoch_200](samples_anime/epoch_200.png) | Baseline run |
+| 1 | - | baseline | 128 | 0.0002/0.0002 | 100 | 200 | - | - | - | - | - | [epoch_50](samples_celebrity/epoch_050.png), [epoch_100](samples_celebrity/epoch_100.png), [epoch_200](samples_celebrity/epoch_200.png) | Baseline run |
 | 2 | - | - | - | - | - | - | - | - | - | - | - | - | - |
 | 3 | - | - | - | - | - | - | - | - | - | - | - | - | - |
 | 4 | - | - | - | - | - | - | - | - | - | - | - | - | - |
@@ -20,7 +20,7 @@ This document tracks experimental results for DCGAN training on anime faces data
 ## Detailed Experiment Notes
 
 ### Experiment 1: Baseline
-**Config File**: `config_anime.yaml`
+**Config File**: `config_celebrity.yaml`
 - Standard DCGAN architecture
 - Adam optimizer with beta1=0.5, beta2=0.999
 - Generator channels: [512, 256, 128, 64]
