@@ -48,6 +48,7 @@ cache/
 
 # Data
 data/
+dataset*/
 *.zip
 *.tar
 *.gz
