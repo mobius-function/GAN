@@ -8,64 +8,74 @@ This document tracks experimental results for DCGAN training on anime and celebr
 ## Current Architecture Details
 
 ### Generator Network
-The generator transforms a 100-dimensional noise vector into a 64×64 RGB image through progressive upsampling:
+The generator transforms a latent noise vector into a 64×64 RGB image through progressive upsampling:
 
-**Input**: z ∈ ℝ^100 (random noise vector)
+**Input**: z ∈ ℝ^latent_dim (random noise vector, typically 100-dimensional)
 
 **Network Structure**:
-1. **Initial Projection**: Linear(100, 512×4×4) → Reshape to (512, 4, 4)
-2. **Block 1**: 
-   - Upsample(scale_factor=2) → 8×8
-   - Conv2d(512, 256, kernel=3, padding=1)
-   - BatchNorm2d(256, momentum=0.8)
-   - LeakyReLU(0.2)
-3. **Block 2**:
-   - Upsample(scale_factor=2) → 16×16
-   - Conv2d(256, 128, kernel=3, padding=1)
-   - BatchNorm2d(128, momentum=0.8)
-   - LeakyReLU(0.2)
-4. **Block 3**:
-   - Upsample(scale_factor=2) → 32×32
-   - Conv2d(128, 64, kernel=3, padding=1)
-   - BatchNorm2d(64, momentum=0.8)
-   - LeakyReLU(0.2)
-5. **Block 4**:
-   - Upsample(scale_factor=2) → 64×64
-   - Conv2d(64, 3, kernel=3, padding=1)
-   - Tanh() → Output range [-1, 1]
+1. **Initial Projection**: 
+   - Linear(latent_dim, channels[0] × init_size²) where init_size = output_size // 16 = 4
+   - For 64×64 output with channels[0]=512: Linear(100, 512×4×4=8192)
+   - Reshape to (batch_size, channels[0], 4, 4)
 
+2. **Convolutional Blocks** (sequential):
+   - BatchNorm2d(channels[0])
+   - **Block 1**: 
+     - Upsample(scale_factor=2) → 8×8
+     - Conv2d(channels[0], channels[1], kernel=3, stride=1, padding=1)
+     - BatchNorm2d(channels[1], momentum=0.8)
+     - LeakyReLU(0.2, inplace=True)
+   - **Block 2**:
+     - Upsample(scale_factor=2) → 16×16
+     - Conv2d(channels[1], channels[2], kernel=3, stride=1, padding=1)
+     - BatchNorm2d(channels[2], momentum=0.8)
+     - LeakyReLU(0.2)
+   - **Block 3**:
+     - Upsample(scale_factor=2) → 32×32
+     - Conv2d(channels[2], channels[3], kernel=3, stride=1, padding=1)
+     - BatchNorm2d(channels[3], momentum=0.8)
+     - LeakyReLU(0.2, inplace=True)
+   - **Block 4**:
+     - Upsample(scale_factor=2) → 64×64
+     - Conv2d(channels[3], output_channels=3, kernel=3, stride=1, padding=1)
+     - Tanh() → Output range [-1, 1]
+
+**Typical Channel Configuration**: [512, 256, 128, 64]
 **Output**: Generated image ∈ ℝ^(3×64×64)
 
 ### Discriminator Network
 The discriminator classifies 64×64 RGB images as real or fake through progressive downsampling:
 
-**Input**: Image ∈ ℝ^(3×64×64)
+**Input**: Image ∈ ℝ^(input_channels×input_size×input_size), typically (3×64×64)
 
 **Network Structure**:
-1. **Block 1**:
-   - Conv2d(3, 64, kernel=3, stride=2, padding=1) → 32×32
-   - LeakyReLU(0.2)
-   - Dropout2d(0.25)
-2. **Block 2**:
-   - Conv2d(64, 128, kernel=3, stride=2, padding=1) → 16×16
-   - BatchNorm2d(128, momentum=0.8)
-   - LeakyReLU(0.2)
-   - Dropout2d(0.25)
-3. **Block 3**:
-   - Conv2d(128, 256, kernel=3, stride=2, padding=1) → 8×8
-   - BatchNorm2d(256, momentum=0.8)
-   - LeakyReLU(0.2)
-   - Dropout2d(0.25)
-4. **Block 4**:
-   - Conv2d(256, 512, kernel=3, stride=2, padding=1) → 4×4
-   - BatchNorm2d(512, momentum=0.8)
-   - LeakyReLU(0.2)
-   - Dropout2d(0.25)
-5. **Output Layer**:
-   - Flatten → 512×4×4 = 8192 features
+1. **Discriminator Blocks** (each block downsamples by 2×):
+   - **Block 1** (no BatchNorm):
+     - Conv2d(input_channels=3, channels[0], kernel=3, stride=2, padding=1) → 32×32
+     - LeakyReLU(0.2)
+     - Dropout2d(0.25)
+   - **Block 2**:
+     - Conv2d(channels[0], channels[1], kernel=3, stride=2, padding=1) → 16×16
+     - LeakyReLU(0.2)
+     - Dropout2d(0.25)
+     - BatchNorm2d(channels[1], momentum=0.8)
+   - **Block 3**:
+     - Conv2d(channels[1], channels[2], kernel=3, stride=2, padding=1) → 8×8
+     - LeakyReLU(0.2)
+     - Dropout2d(0.25)
+     - BatchNorm2d(channels[2], momentum=0.8)
+   - **Block 4**:
+     - Conv2d(channels[2], channels[3], kernel=3, stride=2, padding=1) → 4×4
+     - LeakyReLU(0.2)
+     - Dropout2d(0.25)
+     - BatchNorm2d(channels[3], momentum=0.8)
+
+2. **Output Layer**:
+   - Flatten → channels[3] × (input_size//16)² = 512×4×4 = 8192 features
    - Linear(8192, 1)
    - Sigmoid() → Probability [0, 1]
 
+**Typical Channel Configuration**: [64, 128, 256, 512]
 **Output**: Probability of image being real
 
 ### Training Configuration (Anime Dataset)
