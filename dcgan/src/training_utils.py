@@ -1,11 +1,12 @@
 """Training utilities for DCGAN."""
 
 import os
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
@@ -48,8 +49,8 @@ def setup_models(config: dict, device: torch.device, rank: int) -> Tuple[nn.Modu
     return generator, discriminator
 
 
-def setup_optimizers(generator: nn.Module, discriminator: nn.Module, config: dict) -> Tuple[optim.Optimizer, optim.Optimizer]:
-    """Setup optimizers for generator and discriminator.
+def setup_optimizers(generator: nn.Module, discriminator: nn.Module, config: dict) -> Tuple[optim.Optimizer, optim.Optimizer, Optional[CosineAnnealingLR], Optional[CosineAnnealingLR]]:
+    """Setup optimizers and optionally schedulers for generator and discriminator.
     
     Args:
         generator: Generator model
@@ -57,7 +58,7 @@ def setup_optimizers(generator: nn.Module, discriminator: nn.Module, config: dic
         config: Configuration dictionary
         
     Returns:
-        Tuple of (g_optimizer, d_optimizer)
+        Tuple of (g_optimizer, d_optimizer, g_scheduler, d_scheduler)
     """
     g_optimizer = optim.Adam(
         generator.parameters(),
@@ -71,7 +72,24 @@ def setup_optimizers(generator: nn.Module, discriminator: nn.Module, config: dic
         betas=(config["training"]["beta1"], config["training"]["beta2"]),
     )
     
-    return g_optimizer, d_optimizer
+    # Initialize schedulers if enabled
+    g_scheduler = None
+    d_scheduler = None
+    if config['training'].get('scheduler', {}).get('enabled', False):
+        scheduler_config = config['training']['scheduler']
+        if scheduler_config['type'] == 'cosine':
+            g_scheduler = CosineAnnealingLR(
+                g_optimizer,
+                T_max=scheduler_config['T_max'],
+                eta_min=scheduler_config['eta_min']
+            )
+            d_scheduler = CosineAnnealingLR(
+                d_optimizer,
+                T_max=scheduler_config['T_max'],
+                eta_min=scheduler_config['eta_min']
+            )
+    
+    return g_optimizer, d_optimizer, g_scheduler, d_scheduler
 
 
 def train_discriminator_step(

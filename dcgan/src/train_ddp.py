@@ -7,6 +7,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.multiprocessing as mp
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -26,8 +27,9 @@ from src.utils import load_config, plot_losses, save_checkpoint, save_samples, s
 from src.wandb_logging import finish_wandb, log_epoch_metrics, log_evaluation_metrics, log_generated_images, log_step_metrics, setup_wandb
 
 
-def train_epoch(generator, discriminator, g_optimizer, d_optimizer, criterion, dataloader, 
-               sampler, epoch, config, device, rank, use_wandb, fixed_noise, g_losses, d_losses):
+def train_epoch(generator, discriminator, g_optimizer, d_optimizer, g_scheduler, d_scheduler,
+               criterion, dataloader, sampler, epoch, config, device, rank, use_wandb, 
+               fixed_noise, g_losses, d_losses):
     """Train for one epoch."""
     # Set epoch for distributed sampler
     sampler.set_epoch(epoch)
@@ -77,10 +79,23 @@ def train_epoch(generator, discriminator, g_optimizer, d_optimizer, criterion, d
                 if use_wandb:
                     steps_per_epoch = len(dataloader)
                     log_step_metrics(d_loss, g_loss, epoch, i, steps_per_epoch)
-            
-            # Save samples periodically
-            if (epoch * len(dataloader) + i) % config["training"]["sample_interval"] == 0:
-                save_samples(generator.module, fixed_noise, epoch, config["output"]["sample_dir"], device)
+                    
+                    # Log learning rates if scheduler is enabled
+                    lr_log_interval = config["training"].get("lr_log_interval", 50)
+                    if (i + 1) % lr_log_interval == 0 and g_scheduler is not None:
+                        import wandb
+                        wandb.log({
+                            "learning_rate/generator": g_optimizer.param_groups[0]['lr'],
+                            "learning_rate/discriminator": d_optimizer.param_groups[0]['lr'],
+                            "epoch": epoch,
+                            "step": epoch * steps_per_epoch + i
+                        })
+    
+    # Step schedulers at the end of epoch if enabled
+    if g_scheduler is not None:
+        g_scheduler.step()
+    if d_scheduler is not None:
+        d_scheduler.step()
     
     return epoch_d_loss / len(dataloader), epoch_g_loss / len(dataloader)
 
@@ -106,10 +121,14 @@ def train_gan_ddp(rank: int, world_size: int, config: dict):
     if rank == 0:
         print(f"Loaded dataset with {len(train_dataloader)} batches per GPU")
     
-    # Setup models and optimizers
+    # Setup models, optimizers and schedulers
     generator, discriminator = setup_models(config, device, rank)
-    g_optimizer, d_optimizer = setup_optimizers(generator, discriminator, config)
+    g_optimizer, d_optimizer, g_scheduler, d_scheduler = setup_optimizers(generator, discriminator, config)
     criterion = nn.BCELoss()
+    
+    # Print scheduler status
+    if rank == 0 and g_scheduler is not None:
+        print(f"Using CosineAnnealingLR scheduler with T_max={config['training']['scheduler']['T_max']}, eta_min={config['training']['scheduler']['eta_min']}")
     
     # Create fixed noise for evaluation
     fixed_noise = create_fixed_noise(8, config["model"]["latent_dim"], device)
@@ -127,8 +146,8 @@ def train_gan_ddp(rank: int, world_size: int, config: dict):
     for epoch in range(config["training"]["num_epochs"]):
         # Train for one epoch
         avg_d_loss, avg_g_loss = train_epoch(
-            generator, discriminator, g_optimizer, d_optimizer, criterion,
-            train_dataloader, train_sampler, epoch, config, device, rank,
+            generator, discriminator, g_optimizer, d_optimizer, g_scheduler, d_scheduler,
+            criterion, train_dataloader, train_sampler, epoch, config, device, rank,
             use_wandb, fixed_noise, g_losses, d_losses
         )
         
@@ -141,39 +160,43 @@ def train_gan_ddp(rank: int, world_size: int, config: dict):
             print(f"Epoch [{epoch + 1}/{config['training']['num_epochs']}] "
                   f"D Loss: {sync_d_loss:.4f}, G Loss: {sync_g_loss:.4f}")
             
-            # Evaluate generator
-            generated_images = evaluate_generator(
-                generator.module, fixed_noise, epoch + 1, 
-                config["output"]["sample_dir"], device
-            )
+            # Save samples based on epoch interval
+            if (epoch + 1) % config["training"]["sample_interval"] == 0:
+                generated_images = evaluate_generator(
+                    generator.module, fixed_noise, epoch + 1, 
+                    config["output"]["sample_dir"], device
+                )
+                
+                # Log to wandb
+                if use_wandb:
+                    log_generated_images(generated_images)
             
-            # Log to wandb
+            # Log epoch metrics to wandb
             if use_wandb:
                 log_epoch_metrics(sync_d_loss, sync_g_loss, epoch)
-                log_generated_images(generated_images)
             
-            # Evaluate GAN metrics (IS and FID) periodically
-            eval_interval = config["training"].get("eval_interval", 5)  # Default every 5 epochs
-            if (epoch + 1) % eval_interval == 0:
-                print(f"Evaluating GAN metrics at epoch {epoch + 1}...")
-                try:
-                    is_mean, is_std, fid_score, num_real_samples = evaluate_gan_metrics(
-                        generator.module,
-                        train_dataloader,
-                        device,
-                        config["model"]["latent_dim"],
-                        num_samples=min(5000, len(train_dataloader.dataset)),  # Limit for faster evaluation
-                        batch_size=32
-                    )
-                    
-                    print(f"IS: {is_mean:.3f} ± {is_std:.3f}, FID: {fid_score:.3f}")
-                    
-                    # Log to wandb
-                    if use_wandb:
-                        log_evaluation_metrics(is_mean, is_std, fid_score, epoch)
-                        
-                except Exception as e:
-                    print(f"Warning: Failed to evaluate GAN metrics: {e}")
+            # Evaluate GAN metrics (IS and FID) periodically - COMMENTED OUT
+            # eval_interval = config["training"].get("eval_interval", 5)  # Default every 5 epochs
+            # if (epoch + 1) % eval_interval == 0:
+            #     print(f"Evaluating GAN metrics at epoch {epoch + 1}...")
+            #     try:
+            #         is_mean, is_std, fid_score, num_real_samples = evaluate_gan_metrics(
+            #             generator.module,
+            #             train_dataloader,
+            #             device,
+            #             config["model"]["latent_dim"],
+            #             num_samples=min(5000, len(train_dataloader.dataset)),  # Limit for faster evaluation
+            #             batch_size=32
+            #         )
+            #         
+            #         print(f"IS: {is_mean:.3f} ± {is_std:.3f}, FID: {fid_score:.3f}")
+            #         
+            #         # Log to wandb
+            #         if use_wandb:
+            #             log_evaluation_metrics(is_mean, is_std, fid_score, epoch)
+            #             
+            #     except Exception as e:
+            #         print(f"Warning: Failed to evaluate GAN metrics: {e}")
             
             # Save checkpoint and plots periodically
             if (epoch + 1) % config["training"]["save_interval"] == 0:

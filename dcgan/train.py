@@ -4,11 +4,12 @@ import yaml
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 import wandb
 
 from src.models import Generator, Discriminator
-from dataset import get_celeba_dataloader
+from src.datasets.local_celeba import get_dataloader
 from src.utils import save_samples, save_checkpoint, plot_losses, set_seed
 
 
@@ -21,20 +22,12 @@ def load_config(config_path):
 
 def train_gan(config):
     """Main training function"""
-    
-    # Initialize wandb
-    wandb.init(
-        project="dcgan-celeba",
-        config=config,
-        name=f"dcgan-{config['dataset']['image_size']}px"
-    )
-    
     set_seed(config['seed'])
     
     device = torch.device(config['device'] if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
-    dataloader = get_celeba_dataloader(config)
+    dataloader = get_dataloader(config)
     print(f"Loaded dataset with {len(dataloader)} batches")
     
     generator = Generator(
@@ -60,6 +53,23 @@ def train_gan(config):
         betas=(config['training']['beta1'], config['training']['beta2'])
     )
     
+    # Initialize schedulers if enabled
+    g_scheduler = None
+    d_scheduler = None
+    if config['training'].get('scheduler', {}).get('enabled', False):
+        scheduler_config = config['training']['scheduler']
+        if scheduler_config['type'] == 'cosine':
+            g_scheduler = CosineAnnealingLR(
+                g_optimizer,
+                T_max=scheduler_config['T_max'],
+                eta_min=scheduler_config['eta_min']
+            )
+            d_scheduler = CosineAnnealingLR(
+                d_optimizer,
+                T_max=scheduler_config['T_max'],
+                eta_min=scheduler_config['eta_min']
+            )
+    
     criterion = nn.BCELoss()
     
     fixed_noise = torch.randn(64, config['model']['latent_dim'])
@@ -70,6 +80,15 @@ def train_gan(config):
     
     g_losses = []
     d_losses = []
+    
+    # Initialize wandb if enabled
+    if config.get('wandb', {}).get('enabled', False):
+        wandb.init(
+            project=config['wandb']['project'],
+            name=config['wandb']['run_name'],
+            config=config,
+            mode=config['wandb']['mode']
+        )
     
     print("Starting training...")
     
@@ -121,14 +140,41 @@ def train_gan(config):
                     'D Loss': f"{d_loss.item():.4f}",
                     'G Loss': f"{g_loss.item():.4f}"
                 })
+                
+                # Log to wandb if enabled
+                if config.get('wandb', {}).get('enabled', False):
+                    wandb.log({
+                        'batch_d_loss': d_loss.item(),
+                        'batch_g_loss': g_loss.item(),
+                        'epoch': epoch + 1,
+                        'batch': i + 1
+                    })
             
-            if (epoch * len(dataloader) + i) % config['training']['sample_interval'] == 0:
-                save_samples(generator, fixed_noise, epoch, config['output']['sample_dir'], device)
+            # Log learning rates to wandb at specified interval
+            if (i + 1) % config['training']['lr_log_interval'] == 0 and config.get('wandb', {}).get('enabled', False):
+                current_g_lr = g_optimizer.param_groups[0]['lr']
+                current_d_lr = d_optimizer.param_groups[0]['lr']
+                wandb.log({
+                    'generator_lr': current_g_lr,
+                    'discriminator_lr': current_d_lr,
+                    'epoch': epoch + 1,
+                    'batch': i + 1
+                })
         
         avg_g_loss = epoch_g_loss / len(dataloader)
         avg_d_loss = epoch_d_loss / len(dataloader)
         print(f"Epoch [{epoch+1}/{config['training']['num_epochs']}] "
               f"D Loss: {avg_d_loss:.4f}, G Loss: {avg_g_loss:.4f}")
+        
+        # Step schedulers if enabled
+        if g_scheduler is not None:
+            g_scheduler.step()
+        if d_scheduler is not None:
+            d_scheduler.step()
+        
+        # Save samples based on epoch interval
+        if (epoch + 1) % config['training']['sample_interval'] == 0:
+            save_samples(generator, fixed_noise, epoch, config['output']['sample_dir'], device)
         
         if (epoch + 1) % config['training']['save_interval'] == 0:
             save_checkpoint(
@@ -152,7 +198,7 @@ def train_gan(config):
 
 
 def main():
-W   parser = argparse.ArgumentParser(description='Train GAN on CelebA dataset')
+    parser = argparse.ArgumentParser(description='Train GAN on CelebA dataset')
     parser.add_argument('--config', type=str, default='config.yaml',
                         help='Path to configuration file (default: config.yaml)')
     args = parser.parse_args()

@@ -1,0 +1,61 @@
+# GAN Configuration File for Anime Faces
+
+# Dataset settings
+dataset:
+  name: "local_anime"
+  data_dir: "./dataset-celeba/images"  # Path to local anime images
+  image_size: 64
+  batch_size: 800  # Total batch size across all GPUs
+  num_workers: 8
+  max_images: 24000  # Use 24,000 available anime images
+
+# Model settings
+model:
+  latent_dim: 100
+  generator:
+    channels: [512, 256, 128, 64]
+    kernel_size: 4
+    stride: 2
+    padding: 1
+  discriminator:
+    channels: [64, 128, 256, 512]
+    kernel_size: 4
+    stride: 2
+    padding: 1
+
+# Training settings
+training:
+  num_epochs: 100
+  learning_rate:
+    generator: 0.0002
+    discriminator: 0.0002
+  scheduler:
+    enabled: true  # Set to false to use constant learning rates
+    type: "cosine"  # cosine annealing learning rate scheduler
+    T_max: 100  # Maximum number of iterations (should match num_epochs)
+    eta_min: 0.00001  # Minimum learning rate
+  beta1: 0.5
+  beta2: 0.999
+  save_interval: 1
+  log_interval: 50
+  lr_log_interval: 50  # Log learning rates to wandb every N batches
+  sample_interval: 1
+  eval_interval: 50  # Evaluate IS/FID scores every N epochs
+
+# Output settings
+output:
+  checkpoint_dir: "./checkpoints_anime"
+  sample_dir: "./samples_anime"
+  log_dir: "./logs_anime"
+
+# Hardware settings
+device: "cuda"
+seed: 42
+
+# Wandb settings
+wandb:
+  enabled: true  # Enable wandb logging
+  project: "dcgan-anime"
+  run_name: anime_24000_epoch_100_learn_cosine_0002_00001 
+  mode: "online"  # "online" or "offline"
+  api_key: "d9c2ac65c1c8bd5f5e7166faec45d4eb699a36ab"
